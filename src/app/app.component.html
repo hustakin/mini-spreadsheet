@@ -1,0 +1,33 @@
+<div class="row">
+  <button (click)="printMatrix()">Print</button>
+</div>
+
+<div class="mini-table-wrap">
+  <table class="mini-table" cellspacing="0" cellpadding="0">
+    <thead>
+    <tr>
+      <th></th>
+      <th class="mini-table-row-th" *ngFor="let col of [].constructor(cols); let c=index">{{getColHeader(c)}}</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr *ngFor="let row of [].constructor(rows); let r=index">
+      <th class="mini-table-col-th">{{r + 1}}</th>
+      <td *ngFor="let col of [].constructor(cols); let c=index">
+        <input type="text" [id]="'mini-cel:' + r + '-' + c"
+               [(ngModel)]="matrix[r][c]"
+               (change)="changedAt(r, c, $event.target.value);"
+               (ngModelChange)="changingAt(r, c, $event);"
+               onfocus="this.select()"
+               (keyup)="keypress(r, c, $event)"
+               (keyup.arrowup)="move(r, c, 'UP')"
+               (keyup.arrowleft)="move(r, c, 'LEFT')"
+               (keyup.arrowdown)="move(r, c, 'DOWN')"
+               (keyup.arrowright)="move(r, c, 'RIGHT')"
+               (keyup.enter)="move(r, c, 'ENTER')"
+        />
+      </td>
+    </tr>
+    </tbody>
+  </table>
+</div>
