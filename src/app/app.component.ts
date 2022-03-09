@@ -1,5 +1,25 @@
 import {AfterViewInit, Component, OnInit} from '@angular/core';
 
+
+export enum CellFormat {
+  bold = 'bold',
+  italic = 'italic',
+  underline = 'underline',
+}
+
+export enum CellType {
+  text = 'text',
+  formula = 'formula',
+}
+
+export interface CellModel {
+  type: string,
+  value: any,
+  eval?: any,
+  formulaErr?: boolean,
+  formats?: string,
+}
+
 @Component({
   selector: 'app-root',
   templateUrl: './app.component.html',
@@ -7,10 +27,15 @@ import {AfterViewInit, Component, OnInit} from '@angular/core';
 })
 export class AppComponent implements OnInit, AfterViewInit {
   chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  rows = 40;
-  cols = 20;
-  matrix: any[][];
+  validLabel = new RegExp(/^([A-Z]+)([0-9]+)$/);
 
+  rows = 50;
+  cols = 100;
+  matrix: CellModel[][];
+
+  focusedRow = null;
+  focusedCol = null;
+  tooltip: string;
   enteringFormula = false;
   formulas = {};
 
@@ -19,9 +44,6 @@ export class AppComponent implements OnInit, AfterViewInit {
   }
 
   ngOnInit() {
-    // this.parseFormula('=DA21 + BA*3');
-    console.log(this.getColHeader(26));
-    console.log(this.getColIndex('AA'));
   }
 
   ngAfterViewInit() {
@@ -33,7 +55,13 @@ export class AppComponent implements OnInit, AfterViewInit {
     for (let r = 0; r < this.rows; r++) {
       const row = [];
       for (let c = 0; c < this.cols; c++) {
-        row.push(null);
+        let cell: CellModel = {
+          type: CellType.text,
+          value: null,
+          formats: '',
+          formulaErr: null,
+        };
+        row.push(cell);
       }
       matrix.push(row);
     }
@@ -45,15 +73,41 @@ export class AppComponent implements OnInit, AfterViewInit {
     for (let r = 0; r < this.rows; r++) {
       const row = [];
       for (let c = 0; c < this.cols; c++) {
-        if (this.matrix[r] && this.matrix[r][c]) {
-          row.push(this.matrix[r][c]);
+        if (this.matrix[r] && this.matrix[r][c] && this.matrix[r][c].value) {
+          let cell: CellModel = {
+              type: this.matrix[r][c].type,
+              value: this.matrix[r][c].value,
+              formats: this.matrix[r][c].formats,
+              formulaErr: this.matrix[r][c].formulaErr,
+          };
+          row.push(cell);
         } else {
-          row.push(null);
+          let cell: CellModel = {
+            type: CellType.text,
+            value: null,
+            formats: '',
+            formulaErr: null,
+          };
+          row.push(cell);
         }
       }
       matrix.push(row);
     }
     this.matrix = matrix;
+  }
+
+
+  calcFormulasInMatrix() {
+    for (let r = 0; r < this.matrix.length; r++) {
+      for (let c = 0; c < this.matrix[0].length; c++) {
+        if (this.matrix[r][c].type == CellType.formula) {
+          const val = this.evalFormula(r, c, this.matrix[r][c].value);
+          if(val!==null) {
+            this.matrix[r][c].eval = val;
+          }
+        }
+      }
+    }
   }
 
   printMatrix() {
@@ -65,7 +119,7 @@ export class AppComponent implements OnInit, AfterViewInit {
   }
 
   changedAt(row, col, value) {
-    console.log('Changed value ' + row + ', ' + col + ': ' + value);
+    this.calcFormulasInMatrix();
   }
 
   changingAt(row, col, value) {
@@ -78,49 +132,76 @@ export class AppComponent implements OnInit, AfterViewInit {
     this.reloadMatrix();
   }
 
-  enteredFormula(row, col, formula) {
-    console.log('Just entered formula ' + row + '-' + col + ': ' + formula);
-  }
-
-  parseFormula(formula: string) {
+  evalFormula(row, col, formula: string) {
     if (formula == null || formula.length === 0 || !formula.startsWith('=')) {
-      return null;
+      return formula;
     }
     formula = formula.trim();
     formula = formula.replace(/ /g, '');
-    formula = formula.substring(1);
-    if (formula.length === 0) {
-      return null;
+    if (formula.length === 1) {
+      return formula;
     }
-    console.log(formula);
-    const labels = formula.match(/[^\+\-\*\/]+/g);
-    console.log(labels);
+    let postFormula = formula.substring(1);
+    const labels = postFormula.match(/[^\+\-\*\/]+/g);
     for (const label of labels) {
-      const validLabel = new RegExp(/^[A-Z]+[0-9]+$/);
-      const isValid = validLabel.test(label) || !isNaN(Number(label));
-      if (!isValid) {
-        alert('Invalid formula label: ' + label);
+      const val = this.convertLabelToValue(label);
+      if(val!=null) {
+        postFormula = postFormula.replace(label, val);
       }
     }
-    return;
+    try {
+      const v = eval(postFormula);
+      if(v===null) {
+        this.matrix[row][col].formulaErr = true;
+        return formula;
+      }
+      this.matrix[row][col].formulaErr = false;
+      return v;
+    } catch(e) {
+      this.matrix[row][col].formulaErr = true;
+      return formula;
+    }
   }
 
-  // convertLabelToValue(label: string) {
-  //   let header = '';
-  //   for (let i = 0; i < base26.length; i++) {
-  //     const cBase10 = parseInt(base26[i], 26);
-  //     if (i < base26.length - 1) {
-  //       header += this.chars.charAt(Number(cBase10) - 1);
-  //     } else {
-  //       header += this.chars.charAt(Number(cBase10));
-  //     }
-  //   }
-  // }
+  convertLabelToValue(label: string) {
+      const isValidLabel = this.validLabel.test(label);
+      const isValidNumber = !isNaN(Number(label));
+      if (!isValidLabel && !isValidNumber) {
+        return null;
+      }
+      if (isValidLabel) {
+        const rc = this.validLabel.exec(label);
+        // Is valid cell: col+row
+        if(rc && rc.length == 3) {
+          const rowIndex = Number(rc[2]) - 1;
+          const colIndex = this.getColIndex(rc[1]);
+          if (rowIndex < this.rows && colIndex < this.cols) {
+            const cell = this.matrix[rowIndex][colIndex].value;
+            if(cell === null || cell.trim() === '') {
+              return 0;
+            }
+            else if(!isNaN(Number(cell))) {
+              return cell;
+            }
+          } else {
+            return 0;
+          }
+        }
+        return null;
+      } else {
+        return label;
+      }
+  }
 
   keypress(row, col, e) {
+    if(this.matrix[row][col].value === null || !this.matrix[row][col].value.startsWith('=')) {
+      this.matrix[row][col].type = CellType.text;
+    } else {
+      this.matrix[row][col].type = CellType.formula;
+    }
     if (e.keyCode === 187) {
       if (e.target.value && e.target.value.startsWith('=')) {
-        this.move(row, col, '=');
+        this.move(row, col, 'FORMULA');
         return;
       }
     }
@@ -135,17 +216,56 @@ export class AppComponent implements OnInit, AfterViewInit {
       this.getInputHTMLElement(row + 1, col).focus();
     } else if (key === 'RIGHT' && col < this.cols - 1) {
       this.getInputHTMLElement(row, col + 1).focus();
-    } else if (key === '=') {
-      console.log('Starting formula');
+    } else if (key === 'FORMULA') {
       this.enteringFormula = true;
     } else if (key === 'ENTER') {
-      if (this.enteringFormula) {
-        this.enteredFormula(row, col, this.getInputHTMLElement(row, col).value);
+      const isFormulaValue = this.matrix[row][col].value !== null && this.matrix[row][col].value.startsWith('=');
+      if (this.enteringFormula || isFormulaValue) {
+        this.calcFormulasInMatrix();
+        this.focus(row, col);
       }
       this.enteringFormula = false;
+    } else if (key === 'B') {
+      let currentStyle = this.matrix[row][col].formats;
+      const hasBold = currentStyle.indexOf(CellFormat.bold)>-1;
+      if(hasBold) {
+        currentStyle = currentStyle.replace(CellFormat.bold, '').trim();
+      } else {
+        currentStyle += ' ' + CellFormat.bold;
+      }
+      this.matrix[row][col].formats = currentStyle;
+    } else if (key === 'I') {
+      let currentStyle = this.matrix[row][col].formats;
+      const hasItalic = currentStyle.indexOf(CellFormat.italic)>-1;
+      if(hasItalic) {
+        currentStyle = currentStyle.replace(CellFormat.italic, '').trim();
+      } else {
+        currentStyle += ' ' + CellFormat.italic;
+      }
+      this.matrix[row][col].formats = currentStyle;
+    } else if (key === 'U') {
+      let currentStyle = this.matrix[row][col].formats;
+      const hasUnderline = currentStyle.indexOf(CellFormat.underline)>-1;
+      if(hasUnderline) {
+        currentStyle = currentStyle.replace(CellFormat.underline, '').trim();
+      } else {
+        currentStyle += ' ' + CellFormat.underline;
+      }
+      this.matrix[row][col].formats = currentStyle;
     }
   }
 
+  focus(row, col) {
+    this.getInputHTMLElement(row, col).select();
+    this.tooltip = row + ',' + col;
+    if(this.matrix[row][col].type === CellType.formula) {
+      this.tooltip += ' --> ' + this.evalFormula(row, col, this.matrix[row][col].value);
+    }
+    this.focusedRow = row;
+    this.focusedCol = col;
+  }
+
+  // index start from 0
   getColHeader(index: number) {
     if (index < 26) {
       return this.chars.charAt(index);
@@ -163,17 +283,13 @@ export class AppComponent implements OnInit, AfterViewInit {
     return header;
   }
 
+  // returned index start from 0
   getColIndex(header: string) {
-    if (header.length === 1) {
-      return parseInt(header, 26);
-    }
     let base10 = 0;
     let pow = 0;
     for (let i = header.length - 1; i >= 0; i--) {
-      const loc = this.chars.indexOf(header[i]) + 1;
-      console.log(header[i] + ': ' + loc);
-      base10 += base10 + loc * Math.pow(26, pow);
-      console.log(base10);
+      const loc = this.chars.indexOf(header[i]);
+      base10 += loc * Math.pow(26, pow);
       pow++;
     }
     return base10;

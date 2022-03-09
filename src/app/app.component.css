@@ -20,13 +20,62 @@
   position:relative;
 }
 
+.mini-table td input.formula {
+  background: gold;
+}
+
+.mini-table td input.formala-err {
+  background: red;
+}
+
+.mini-table td input.bold {
+  font-weight: bold;
+  font-size: medium;
+  border-width: thin;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.mini-table td input.italic {
+  font-style: italic;
+  font-size: medium;
+  border-width: thin;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.mini-table td input.underline {
+  text-decoration: underline;
+  font-size: medium;
+  border-width: thin;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
 .mini-table-row-th {
   font-size: 15px;
   font-weight: bolder;
 }
 
+.mini-table-row-th.focused {
+  background: deepskyblue;
+}
+
 .mini-table-col-th {
   font-size: 15px;
   font-weight: bolder;
+  padding-left: 10px;
   padding-right: 10px;
+}
+
+.mini-table-col-th.focused {
+  background: deepskyblue;
+}
+
+.mini-table-tooltip {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  padding: 5px;
+  background: orange;
 }
